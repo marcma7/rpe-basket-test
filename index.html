@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RPE</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+    button {
+      font-size: 2.5rem;
+      margin: 10px;
+      width: 80px;
+      height: 80px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>RPE</h1>
+<p>Com et sents avui?</p>
+
+<div id="botons"></div>
+<p id="msg"></p>
+
+<script>
+console.log('JS carregat')
+
+// DADES DE SUPABASE (edita només aquí)
+const SUPABASE_URL = 'https://yixicmvonuiqdgcaiogb.supabase.co'
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpeGljbXZvbnVpcWRnY2Fpb2diIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAwMTU5MDksImV4cCI6MjA4NTU5MTkwOX0.NYiQN75-BqfiVkNRkwRsU6PE0fFleuPG6o5BaklhWgs'
+const JUGADOR_ID   = 'cae565ca-63e1-473d-a7d7-0ac9fd4930d7'
+
+// COMPROVACIONS
+if (SUPABASE_URL.includes('POSA_AQUI')) {
+  console.error('❌ Falta SUPABASE_URL')
+}
+if (SUPABASE_KEY.includes('POSA_AQUI')) {
+  console.error('❌ Falta SUPABASE_KEY')
+}
+if (JUGADOR_ID.includes('POSA_AQUI')) {
+  console.error('❌ Falta JUGADOR_ID')
+}
+
+// CREAR CLIENT
+const supabaseClient = supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_KEY
+)
+
+console.log('✅ Supabase inicialitzat')
+
+// UI
+const botons = document.getElementById('botons')
+const msg = document.getElementById('msg')
+
+for (let i = 1; i <= 10; i++) {
+  const b = document.createElement('button')
+  b.textContent = i
+
+  b.onclick = async () => {
+    msg.textContent = 'Enviant RPE ' + i + '...'
+
+    const { error } = await supabaseClient
+      .from('rpe_registres')
+      .insert({
+        jugador_id: JUGADOR_ID,
+        valor: i
+      })
+
+    if (error) {
+      console.error(error)
+      msg.textContent = 'Error 😕'
+    } else {
+      msg.textContent = 'Gràcies!'
+      setTimeout(() => msg.textContent = '', 2000)
+    }
+  }
+
+  botons.appendChild(b)
+}
+</script>
+
+
+
+
+</body>
+</html>
