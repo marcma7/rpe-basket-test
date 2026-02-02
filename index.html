@@ -25,7 +25,7 @@
 <body>
 
 <h1>RPE</h1>
-<p>Com et sents avui?</p>
+<p id="pregunta">Com et sents avui?</p>
 
 <div id="login">
   <input type="text" id="nomJugador" placeholder="Introdueix el teu nom" />
@@ -43,6 +43,10 @@
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpeGljbXZvbnVpcWRnY2Fpb2diIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAwMTU5MDksImV4cCI6MjA4NTU5MTkwOX0.NYiQN75-BqfiVkNRkwRsU6PE0fFleuPG6o5BaklhWgs'
   const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
 
+  console.log('Supabase object:', supabase)
+  console.log('Supabase client:', supabaseClient)
+
+
   // ====================
   // Elements HTML
   // ====================
@@ -58,9 +62,35 @@
   // Si ja tenim jugador guardat
   // ====================
   if (jugadorId) {
-    loginDiv.style.display = 'none'
-    botonsDiv.style.display = 'block'
+    const carregarJugador = async () => {
+      const { data, error } = await supabaseClient
+        .from('jugadors')
+        .select('nom')
+        .eq('id', jugadorId)
+        .single()
+
+      if (!error && data) {
+        actualitzarPregunta(data.nom)
+        loginDiv.style.display = 'none'
+        botonsDiv.style.display = 'block'
+        mostrarBotons()
+      } else {
+        // si hi ha algun problema, tornem al login
+    	localStorage.removeItem('jugadorId')
+      }
+    }
+
+    carregarJugador()
   }
+
+
+  const pregunta = document.getElementById('pregunta')
+
+  function actualitzarPregunta(nom) {
+    const nomBonic = nom.charAt(0).toUpperCase() + nom.slice(1)
+    pregunta.textContent = `${nomBonic}, com et sents avui?`
+  }
+
 
   // ====================
   // Funció per mostrar botons
@@ -90,11 +120,6 @@
   }
 
   // ====================
-  // Si ja tenim jugador guardat, mostrar botons directament
-  // ====================
-  if (jugadorId) mostrarBotons()
-
-  // ====================
   // Botó per entrar nom
   // ====================
   btnNom.onclick = async () => {
@@ -118,11 +143,11 @@
         .from('jugadors')
         .insert({ nom })
         .select()
-        .single()
+        .limit(1)
 
       if (errInsert) { console.error(errInsert); return alert("Error al crear jugador") }
 
-      jugadorId = newPlayer.id
+      jugadorId = newPlayer[0].id
     }
 
     // Guardar a localStorage
