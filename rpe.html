@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RPE Multijugador</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+    input {
+      font-size: 1.2rem;
+      padding: 5px;
+    }
+    button {
+      font-size: 2.5rem;
+      margin: 10px;
+      width: 80px;
+      height: 80px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>RPE</h1>
+<p id="pregunta">Com et sents avui?</p>
+
+<div id="login">
+  <input type="text" id="nomJugador" placeholder="Introdueix el teu nom" />
+  <button id="btnNom">Comença</button>
+</div>
+
+<div id="botons" style="display:none;"></div>
+<p id="msg"></p>
+
+<script>
+  // ====================
+  // Configuració Supabase
+  // ====================
+  const SUPABASE_URL = 'https://yixicmvonuiqdgcaiogb.supabase.co'
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpeGljbXZvbnVpcWRnY2Fpb2diIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAwMTU5MDksImV4cCI6MjA4NTU5MTkwOX0.NYiQN75-BqfiVkNRkwRsU6PE0fFleuPG6o5BaklhWgs'
+  const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+
+  console.log('Supabase object:', supabase)
+  console.log('Supabase client:', supabaseClient)
+
+
+  // ====================
+  // Elements HTML
+  // ====================
+  const nomInput = document.getElementById('nomJugador')
+  const btnNom = document.getElementById('btnNom')
+  const botonsDiv = document.getElementById('botons')
+  const msg = document.getElementById('msg')
+  const loginDiv = document.getElementById('login')
+
+  let jugadorId = localStorage.getItem('jugadorId')
+
+  // ====================
+  // Si ja tenim jugador guardat
+  // ====================
+  if (jugadorId) {
+    const carregarJugador = async () => {
+      const { data, error } = await supabaseClient
+        .from('jugadors')
+        .select('nom')
+        .eq('id', jugadorId)
+        .single()
+
+      if (!error && data) {
+        actualitzarPregunta(data.nom)
+        loginDiv.style.display = 'none'
+        botonsDiv.style.display = 'block'
+        mostrarBotons()
+      } else {
+        // si hi ha algun problema, tornem al login
+    	localStorage.removeItem('jugadorId')
+      }
+    }
+
+    carregarJugador()
+  }
+
+
+  const pregunta = document.getElementById('pregunta')
+
+  function actualitzarPregunta(nom) {
+    const nomBonic = nom.charAt(0).toUpperCase() + nom.slice(1)
+    pregunta.textContent = `${nomBonic}, com et sents avui?`
+  }
+
+
+  // ====================
+  // Funció per mostrar botons
+  // ====================
+  function mostrarBotons() {
+    for (let i = 1; i <= 10; i++) {
+      const b = document.createElement('button')
+      b.textContent = i
+      b.onclick = async () => {
+        msg.textContent = 'Enviant RPE ' + i + '...'
+        const { error } = await supabaseClient
+          .from('rpe_registres')
+          .insert({
+            jugador_id: jugadorId,
+            valor: i
+          })
+        if (error) {
+          console.error(error)
+          msg.textContent = 'Error 😕'
+        } else {
+          msg.textContent = 'Gràcies!'
+          setTimeout(() => msg.textContent = '', 2000)
+        }
+      }
+      botonsDiv.appendChild(b)
+    }
+  }
+
+  // ====================
+  // Botó per entrar nom
+  // ====================
+  btnNom.onclick = async () => {
+    let nom = nomInput.value.trim().toLowerCase()
+    if (!nom) return alert("Escriu un nom!")
+
+    // Comprovar si ja existeix
+    let { data: existing, error } = await supabaseClient
+      .from('jugadors')
+      .select('*')
+      .eq('nom', nom)
+      .limit(1)
+
+    if (error) { console.error(error); return alert("Error de BD") }
+
+    if (existing.length > 0) {
+      jugadorId = existing[0].id
+    } else {
+      // Crear jugador nou
+      let { data: newPlayer, error: errInsert } = await supabaseClient
+        .from('jugadors')
+        .insert({ nom })
+        .select()
+        .limit(1)
+
+      if (errInsert) { console.error(errInsert); return alert("Error al crear jugador") }
+
+      jugadorId = newPlayer[0].id
+    }
+
+    // Guardar a localStorage
+    localStorage.setItem('jugadorId', jugadorId)
+
+    // Amagar login i mostrar botons
+    loginDiv.style.display = 'none'
+    botonsDiv.style.display = 'block'
+    mostrarBotons()
+  }
+
+</script>
+
+</body>
+</html>

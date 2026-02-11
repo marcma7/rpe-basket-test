@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Panell SUPERADMIN</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+body {
+  font-family: sans-serif;
+  padding: 20px;
+  background: #f5f7fa;
+}
+
+h1 { text-align: center; }
+
+.container {
+  display: flex;
+  gap: 20px;
+  margin-top: 30px;
+}
+
+.column {
+  flex: 1;
+  background: white;
+  border-radius: 15px;
+  padding: 15px;
+  min-height: 300px;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+  transition: 0.2s;
+}
+
+.column.drag-over {
+  background: #e3f2fd;
+}
+
+.column h2 {
+  text-align: center;
+}
+
+.user-card {
+  background: #f1f1f1;
+  padding: 10px;
+  margin: 8px 0;
+  border-radius: 10px;
+  cursor: grab;
+  transition: 0.2s;
+}
+
+.user-card:active {
+  cursor: grabbing;
+  opacity: 0.5;
+}
+</style>
+</head>
+<body>
+
+<h1>Panell SUPERADMIN</h1>
+<p id="msg"></p>
+
+<div id="content" style="display:none;">
+  <div class="container">
+    <div class="column" data-perfil="USER">
+      <h2>USER</h2>
+      <div class="list"></div>
+    </div>
+    <div class="column" data-perfil="ADMIN">
+      <h2>ADMIN</h2>
+      <div class="list"></div>
+    </div>
+    <div class="column" data-perfil="SUPERADMIN">
+      <h2>SUPERADMIN</h2>
+      <div class="list"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://yixicmvonuiqdgcaiogb.supabase.co'
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpeGljbXZvbnVpcWRnY2Fpb2diIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAwMTU5MDksImV4cCI6MjA4NTU5MTkwOX0.NYiQN75-BqfiVkNRkwRsU6PE0fFleuPG6o5BaklhWgs'
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+
+const jugadorId = localStorage.getItem('jugadorId')
+const msg = document.getElementById('msg')
+
+if (!jugadorId) {
+  msg.textContent = "No tens accés."
+  throw new Error("Sense login")
+}
+
+async function comprovarSuperAdmin() {
+  const { data, error } = await supabaseClient
+    .from('jugadors')
+    .select('perfil')
+    .eq('id', jugadorId)
+    .single()
+
+  if (error || !data || data.perfil !== 'SUPERADMIN') {
+    msg.textContent = "Accés restringit."
+    return false
+  }
+
+  document.getElementById('content').style.display = 'block'
+  return true
+}
+
+async function carregarUsuaris() {
+  const { data, error } = await supabaseClient
+    .from('jugadors')
+    .select('*')
+    .order('nom')
+
+  if (error) {
+    msg.textContent = "Error carregant usuaris"
+    return
+  }
+
+  document.querySelectorAll('.list').forEach(l => l.innerHTML = '')
+
+  data.forEach(user => {
+    const card = document.createElement('div')
+    card.className = 'user-card'
+    card.textContent = user.nom
+    card.draggable = true
+    card.dataset.id = user.id
+    card.dataset.perfil = user.perfil
+
+    card.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData("id", user.id)
+      e.dataTransfer.setData("perfil", user.perfil)
+    })
+
+    const column = document.querySelector(
+      `.column[data-perfil="${user.perfil}"] .list`
+    )
+
+    column.appendChild(card)
+  })
+}
+
+async function actualitzarPerfil(userId, nouPerfil) {
+  const { error } = await supabaseClient
+    .from('jugadors')
+    .update({ perfil: nouPerfil })
+    .eq('id', userId)
+
+  if (error) {
+    alert("Error actualitzant perfil")
+  } else {
+    carregarUsuaris()
+  }
+}
+
+function activarDrop() {
+  const columns = document.querySelectorAll('.column')
+
+  columns.forEach(col => {
+
+    col.addEventListener('dragover', (e) => {
+      e.preventDefault()
+      col.classList.add('drag-over')
+    })
+
+    col.addEventListener('dragleave', () => {
+      col.classList.remove('drag-over')
+    })
+
+    col.addEventListener('drop', async (e) => {
+      e.preventDefault()
+      col.classList.remove('drag-over')
+
+      const userId = e.dataTransfer.getData("id")
+      const perfilActual = e.dataTransfer.getData("perfil")
+      const nouPerfil = col.dataset.perfil
+
+      if (perfilActual !== nouPerfil) {
+        msg.textContent = "Actualitzant..."
+        await actualitzarPerfil(userId, nouPerfil)
+        msg.textContent = "Perfil actualitzat!"
+        setTimeout(() => msg.textContent = "", 2000)
+      }
+    })
+  })
+}
+
+async function init() {
+  const ok = await comprovarSuperAdmin()
+  if (ok) {
+    await carregarUsuaris()
+    activarDrop()
+  }
+}
+
+init()
+</script>
+
+</body>
+</html>
