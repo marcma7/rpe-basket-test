@@ -1,33 +1,37 @@
 <!DOCTYPE html>
 <html lang="ca">
 <head>
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>RPE App</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
-/* Estil general */
 body {
   font-family: sans-serif;
   text-align: center;
   padding: 40px;
 }
 
-/* Botons centrats en columna per SUPERADMIN */
-#superadmin-options {
-  display: none;      /* inicialment ocult */
-  display: flex;      /* activar flex */
-  flex-direction: column;  /* columna vertical */
-  align-items: center;     /* centrar horitzontal */
-  gap: 15px;               /* espai entre botons */
-  margin-top: 20px;
+#msg {
+  font-size: 1.2rem;
+  margin-bottom: 30px;
 }
 
-#superadmin-options button {
+/* Div amb botons SUPERADMIN i ADMIN */
+#role-options {
+  display: none;           /* inicialment ocult */
+  flex-direction: column;   /* columna vertical */
+  align-items: center;      /* centrar horitzontal */
+  gap: 15px;                /* espai entre botons */
+  margin-top: 20px;
+  display: flex;            /* activar flex */
+}
+
+#role-options button {
   font-size: 1.2rem;
   padding: 10px 20px;
-  width: 200px;      /* opcional: amplada uniforme */
+  width: 220px;             /* amplada uniforme */
 }
-
 </style>
 </head>
 <body>
