@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Panell ADMIN</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+body { font-family: sans-serif; padding: 20px; background: #f5f7fa; }
+h1 { text-align: center; }
+#equip-selector { margin-bottom: 20px; font-size: 1.1rem; }
+.container { display: flex; gap: 20px; }
+.left, .right { background: white; padding: 15px; border-radius: 10px; box-shadow: 0 5px 10px rgba(0,0,0,0.05); }
+.left { flex: 1; }
+.right { flex: 2; max-height: 600px; overflow-y: auto; }
+label { display: block; margin-top: 10px; }
+input[type=text], input[type=number] { width: 90%; padding: 5px; margin-top: 2px; }
+input[type=checkbox] { transform: scale(1.2); margin-left: 5px; }
+.jugador { display: flex; align-items: center; justify-content: space-between; padding: 8px; margin: 5px 0; background: #f1f1f1; border-radius: 6px; }
+.jugador span { flex: 1; }
+.jugador input { width: 60px; margin-left: 5px; }
+.jugador input[type=checkbox] { width: auto; margin-left: 5px; }
+#msg { margin-top: 10px; font-weight: bold; color: green; }
+button { margin-top: 10px; padding: 5px 10px; }
+</style>
+</head>
+<body>
+
+<h1>Panell ADMIN</h1>
+<p>Selecciona equip:</p>
+<select id="equip-selector"></select>
+
+<div class="container">
+  <div class="left">
+  <label>Data:
+    <input type="date" id="data-activitat">
+  </label>
+  <label>Preparació Física:
+    <input type="number" id="pf-text">
+  </label>
+  <label>Pista:
+    <input type="number" id="pista-text">
+  </label>
+  <label>
+    Partit:
+    <input type="checkbox" id="partit-check">
+  </label>
+  <button id="aplicar-a-tots">Aplicar a tots</button>
+</div>
+
+<div class="right">
+  <h3>Jugadors de l’equip</h3>
+  <div id="jugadors-list"></div>
+  <button id="guardar-tots">Guardar a la BBDD</button>
+</div>
+
+
+</div>
+
+<p id="msg"></p>
+
+<script>
+const SUPABASE_URL = 'https://yixicmvonuiqdgcaiogb.supabase.co'
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpeGljbXZvbnVpcWRnY2Fpb2diIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAwMTU5MDksImV4cCI6MjA4NTU5MTkwOX0.NYiQN75-BqfiVkNRkwRsU6PE0fFleuPG6o5BaklhWgs'
+  
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+
+const jugadorId = localStorage.getItem('jugadorId')
+if (!jugadorId) { alert("No logat!"); window.location.href="rpe.html" }
+
+const equipSelector = document.getElementById('equip-selector')
+const dataInput = document.getElementById('data-activitat')
+const pfInput = document.getElementById('pf-text')
+const pistaInput = document.getElementById('pista-text')
+const partitCheck = document.getElementById('partit-check')
+const guardarBtn = document.getElementById('guardar-activitat')
+const jugadorsList = document.getElementById('jugadors-list')
+const msg = document.getElementById('msg')
+
+let equipActual = null
+let dataActual = null
+let jugadors = []
+
+async function init() {
+  // 1️⃣ Saber perfil
+  const { data: jugador } = await supabaseClient.from('jugadors').select('perfil').eq('id', jugadorId).single()
+  let equips = []
+
+  if (jugador.perfil === 'SUPERADMIN') {
+    const { data } = await supabaseClient.from('equips').select('*').order('nom')
+    equips = data
+  } else if (jugador.perfil === 'ADMIN') {
+    const { data } = await supabaseClient
+      .from('admin_equips')
+      .select('equip_id, equips(nom)')
+      .eq('admin_id', jugadorId)
+    equips = data.map(a => ({ id: a.equip_id, nom: a.equips.nom }))
+  } else { alert("No tens accés"); window.location.href="rpe.html" }
+
+  // Omplir selector equips
+  equipSelector.innerHTML = ''
+  equips.forEach(e => { const opt=document.createElement('option'); opt.value=e.id; opt.textContent=e.nom; equipSelector.appendChild(opt) })
+  equipActual = equips[0]?.id
+  dataInput.value = new Date().toISOString().slice(0,10)
+
+  if (equipActual) carregarJugadors(equipActual)
+}
+
+equipSelector.addEventListener('change', e => { equipActual=e.target.value; carregarJugadors(equipActual) })
+
+// ----------------
+// Carregar jugadors i dades del dia
+// ----------------
+async function carregarJugadors(equipId) {
+  if (!equipId) return
+  const avui = dataInput.value
+
+  const { data: jugData } = await supabaseClient.from('jugadors').select('*').eq('equip_id', equipId).order('nom')
+  jugadors = jugData || []
+
+  // Carregar activitats_jugadors del dia
+  const { data: actData } = await supabaseClient
+    .from('activitats_jugadors')
+    .select('*')
+    .in('jugador_id', jugadors.map(j=>j.id))
+    .eq('data', avui)
+
+  renderJugadors(actData)
+}
+
+function renderJugadors(actData=[]) {
+  jugadorsList.innerHTML = ''
+  jugadors.forEach(j => {
+    const aj = actData.find(a => a.jugador_id===j.id) || {}
+    const div = document.createElement('div')
+    div.className='jugador'
+    div.innerHTML = `
+      <span>${j.nom}</span>
+      <input type="number" placeholder="PF" data-jid="${j.id}" class="temps-pf" value="${aj.temps_pf||''}">
+      <input type="number" placeholder="Pista" data-jid="${j.id}" class="temps-pista" value="${aj.temps_pista||''}">
+      <input type="checkbox" data-jid="${j.id}" class="partit-jug" ${aj.partit?'checked':''}>
+    `
+    jugadorsList.appendChild(div)
+  })
+}
+
+// ----------------
+// BOTÓ D’APLICAR A TOTS
+// ----------------
+const aplicarBtn = document.getElementById('aplicar-a-tots')
+aplicarBtn.addEventListener('click', () => {
+  const pfVal = pfInput.value || 0
+  const pistaVal = pistaInput.value || 0
+  const partitVal = partitCheck.checked
+
+  document.querySelectorAll('.temps-pf').forEach(i => i.value = pfVal)
+  document.querySelectorAll('.temps-pista').forEach(i => i.value = pistaVal)
+  document.querySelectorAll('.partit-jug').forEach(i => i.checked = partitVal)
+})
+
+// ----------------
+// BOTÓ GUARDAR TOTS
+// ----------------
+const guardarTotsBtn = document.getElementById('guardar-tots')
+guardarTotsBtn.addEventListener('click', async () => {
+  const avui = dataInput.value
+  for (const j of jugadors) {
+    const pf = document.querySelector(`.temps-pf[data-jid="${j.id}"]`).value || 0
+    const pista = document.querySelector(`.temps-pista[data-jid="${j.id}"]`).value || 0
+    const partit = document.querySelector(`.partit-jug[data-jid="${j.id}"]`).checked
+
+    // Comprovar si ja existeix
+    const { data: exist } = await supabaseClient
+      .from('activitats_jugadors')
+      .select('*')
+      .eq('jugador_id', j.id)
+      .eq('data', avui)
+      .limit(1)
+      .single()
+
+    if (exist) {
+      await supabaseClient
+        .from('activitats_jugadors')
+        .update({ temps_pf: pf, temps_pista: pista, partit: partit })
+        .eq('id', exist.id)
+    } else {
+      await supabaseClient
+        .from('activitats_jugadors')
+        .insert({ jugador_id: j.id, data: avui, temps_pf: pf, temps_pista: pista, partit: partit })
+    }
+  }
+  msg.textContent="Dades guardades!"
+  setTimeout(()=>msg.textContent='',2000)
+})
+
+
+init()
+</script>
+</body>
+</html>
