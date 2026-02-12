@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestiona equips</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+body {
+  font-family: sans-serif;
+  margin: 30px;
+}
+
+h1 {
+  margin-bottom: 20px;
+}
+
+select, input {
+  padding: 6px;
+  margin: 5px 0;
+  width: 250px;
+}
+
+button {
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.section {
+  margin-top: 30px;
+}
+
+.search-results div {
+  padding: 4px;
+  cursor: pointer;
+  border-bottom: 1px solid #eee;
+}
+
+.search-results div:hover {
+  background: #f2f2f2;
+}
+
+.player-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid #eee;
+}
+
+.delete-btn {
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: red;
+  cursor: pointer;
+}
+</style>
+</head>
+
+<body>
+
+<h1>Gestiona els teus equips</h1>
+
+<div id="crearEquipDiv" style="display:none; margin-bottom:10px;">
+  <input type="text" id="nouEquipNom" placeholder="Nom del nou equip">
+  <button id="btnCrearEquip">Crear equip</button>
+</div>
+
+<select id="equipSelect"></select>
+
+<div class="section">
+  <h3>Afegeix jugador</h3>
+
+  <input id="nom" placeholder="Nom">
+  <input id="cognom" placeholder="Cognom">
+  <button id="btnAfegir">Afegeix</button>
+
+  <div class="search-results" id="searchResults"></div>
+</div>
+
+<div class="section">
+  <h3>Jugadors de l'equip</h3>
+  <div id="llistaJugadors"></div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://yixicmvonuiqdgcaiogb.supabase.co'
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpeGljbXZvbnVpcWRnY2Fpb2diIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAwMTU5MDksImV4cCI6MjA4NTU5MTkwOX0.NYiQN75-BqfiVkNRkwRsU6PE0fFleuPG6o5BaklhWgs'
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+
+const jugadorId = localStorage.getItem("jugadorId")
+let perfilActual = null
+let equipActual = null
+
+const equipSelect = document.getElementById("equipSelect")
+const llistaJugadors = document.getElementById("llistaJugadors")
+const searchResults = document.getElementById("searchResults")
+
+// ------------------
+// INIT
+// ------------------
+async function init() {
+  const { data } = await supabaseClient
+    .from("users")
+    .select("rol")
+    .eq("id", jugadorId)
+    .single()
+
+  perfilActual = data.rol
+
+  // Mostrar opció crear equip si és SUPERADMIN
+  if (perfilActual === "SUPERADMIN") {
+    document.getElementById("crearEquipDiv").style.display = "block"
+  }
+
+  await carregarEquips()
+}
+
+
+init()
+
+// ------------------
+// Carregar equips
+// ------------------
+async function carregarEquips() {
+
+  let equips = []
+
+  if (perfilActual === "SUPERADMIN") {
+    const { data } = await supabaseClient
+      .from("teams")
+      .select("*")
+      .order("nom")
+    equips = data
+  } else {
+    const { data, error } = await supabaseClient
+    .from('users_teams')
+    .select('team_id, teams(nom)')
+    .eq('user_id', jugadorId)
+
+  if (error) {
+    console.error(error)
+    alert("Error carregant equips")
+    return
+  }
+
+  equips = (data || [])
+    .map(e => ({ id: e.team_id, nom: e.teams.nom }))
+    .sort((a,b) => a.nom.localeCompare(b.nom))  // ordenar en JS
+
+  if (equips.length === 0) {
+    alert("No tens cap equip assignat")
+    return
+  }
+  }
+
+  equipSelect.innerHTML = ""
+
+  equips.forEach(e => {
+    const opt = document.createElement("option")
+    opt.value = e.id
+    opt.textContent = e.nom
+    equipSelect.appendChild(opt)
+  })
+
+  equipActual = equips[0]?.id
+  if (equipActual) carregarJugadors()
+}
+
+equipSelect.addEventListener("change", e => {
+  equipActual = e.target.value
+  carregarJugadors()
+})
+
+// ------------------
+// Carregar jugadors equip
+// ------------------
+async function carregarJugadors() {
+
+  const { data } = await supabaseClient
+    .from("users_teams")
+    .select("user_id, users(nom, cognom, codi)")
+    .eq("team_id", equipActual)
+
+  llistaJugadors.innerHTML = ""
+
+  data.forEach(j => {
+
+    const row = document.createElement("div")
+    row.className = "player-row"
+
+    row.innerHTML = `
+      <span>
+        ${j.users.nom} ${j.users.cognom}
+        (${j.users.codi})
+      </span>
+      <button class="delete-btn">❌</button>
+    `
+
+    row.querySelector("button").onclick = () =>
+      eliminarJugador(j.user_id)
+
+    llistaJugadors.appendChild(row)
+  })
+}
+
+// ------------------
+// Eliminar jugador
+// ------------------
+async function eliminarJugador(userId) {
+
+  await supabaseClient
+    .from("users_teams")
+    .delete()
+    .eq("user_id", userId)
+    .eq("team_id", equipActual)
+
+  carregarJugadors()
+}
+
+// ------------------
+// Buscador jugadors existents
+// ------------------
+document.getElementById("nom").addEventListener("input", buscar)
+document.getElementById("cognom").addEventListener("input", buscar)
+
+async function buscar() {
+
+  const nom = document.getElementById("nom").value
+  const cognom = document.getElementById("cognom").value
+
+  if (!nom && !cognom) {
+    searchResults.innerHTML = ""
+    return
+  }
+
+  const { data } = await supabaseClient
+    .from("users")
+    .select("id, nom, cognom, codi")
+    .ilike("nom", `%${nom}%`)
+    .ilike("cognom", `%${cognom}%`)
+    .limit(10)
+
+  searchResults.innerHTML = ""
+
+  data.forEach(j => {
+    const div = document.createElement("div")
+    div.textContent = `${j.nom} ${j.cognom} (${j.codi})`
+    div.onclick = () => afegirJugadorExist(j.id)
+    searchResults.appendChild(div)
+  })
+}
+
+// ------------------
+// Afegir jugador existent
+// ------------------
+async function afegirJugadorExist(userId) {
+
+  await supabaseClient.from("users_teams").insert({
+    user_id: userId,
+    team_id: equipActual
+  })
+
+  searchResults.innerHTML = ""
+  carregarJugadors()
+}
+
+// ------------------
+// Botó afegir nou jugador
+// ------------------
+document.getElementById("btnAfegir").onclick = async () => {
+  let nom = document.getElementById("nom").value.trim()
+  let cognom = document.getElementById("cognom").value.trim()
+
+  if (!nom || !cognom) return alert("Falten dades")
+
+  // ------------------
+  // Generar codi inicial
+  // ------------------
+  function crearCodi(nom, cognom) {
+    // Funció per treure accents
+    const normalize = str => str.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    let codiBase = (normalize(nom[0]) + normalize(cognom)).toLowerCase().replace(/\s+/g, '')
+    return codiBase
+  }
+
+  let codi = crearCodi(nom, cognom)
+
+  // ------------------
+  // Comprovar si ja existeix i afegir número si cal
+  // ------------------
+  let exist = await supabaseClient
+    .from("users")
+    .select("codi")
+    .ilike("codi", `${codi}%`) // qualsevol que comenci igual
+    .order("codi")
+
+  if (exist.data.length > 0) {
+    // Comptem quants ja hi ha amb aquest prefix
+    let nums = exist.data.map(u => {
+      let suffix = u.codi.replace(codi, '')
+      return parseInt(suffix) || 0
+    })
+    let maxNum = Math.max(...nums)
+    codi = codi + (maxNum + 1)
+  }
+
+  // ------------------
+  // Insertar jugador amb codi únic
+  // ------------------
+  const { data: jugador, error } = await supabaseClient
+    .from("users")
+    .insert({ nom, cognom, codi })
+    .select()
+    .single()
+
+  if (error) return alert("Error creant jugador: " + error.message)
+
+  // Afegir a l'equip
+  await supabaseClient.from("users_teams").insert({
+    user_id: jugador.id,
+    team_id: equipActual
+  })
+
+  document.getElementById("nom").value = ""
+  document.getElementById("cognom").value = ""
+  searchResults.innerHTML = ""
+
+  carregarJugadors()
+}
+
+document.getElementById("btnCrearEquip").onclick = async () => {
+  const nom = document.getElementById("nouEquipNom").value.trim()
+  if (!nom) return alert("Introdueix un nom!")
+
+  // Crear equip a la BD
+  const { data: nouEquip, error } = await supabaseClient
+    .from("teams")
+    .insert({ nom })
+    .select()
+    .single()
+
+  if (error) return alert("Error creant equip: " + error.message)
+
+  // Afegir l’equip al desplegable automàticament i seleccionar-lo
+  const opt = document.createElement("option")
+  opt.value = nouEquip.id
+  opt.textContent = nouEquip.nom
+  equipSelect.appendChild(opt)
+  equipSelect.value = nouEquip.id
+  equipActual = nouEquip.id
+
+  document.getElementById("nouEquipNom").value = ""
+
+  // Carregar jugadors (encara no n’hi haurà cap)
+  carregarJugadors()
+}
+
+</script>
+
+</body>
+</html>

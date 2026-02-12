@@ -75,6 +75,23 @@ h1 { text-align: center; }
   </div>
 </div>
 
+<!-- Afegim un div flotant per assignar equips -->
+<div id="equipModal" style="
+  display:none; 
+  position:fixed; 
+  top:50%; left:50%; 
+  transform:translate(-50%,-50%);
+  background:white; padding:20px; 
+  border-radius:10px; 
+  box-shadow:0 5px 15px rgba(0,0,0,0.3);
+  z-index:1000;
+">
+  <h3>Assignar equips</h3>
+  <div id="equipList"></div>
+  <button id="closeEquipModal">Tancar</button>
+</div>
+
+
 <script>
 const SUPABASE_URL = 'https://yixicmvonuiqdgcaiogb.supabase.co'
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpeGljbXZvbnVpcWRnY2Fpb2diIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAwMTU5MDksImV4cCI6MjA4NTU5MTkwOX0.NYiQN75-BqfiVkNRkwRsU6PE0fFleuPG6o5BaklhWgs'
@@ -90,12 +107,12 @@ if (!jugadorId) {
 
 async function comprovarSuperAdmin() {
   const { data, error } = await supabaseClient
-    .from('jugadors')
-    .select('perfil')
+    .from('users')
+    .select('rol')
     .eq('id', jugadorId)
     .single()
 
-  if (error || !data || data.perfil !== 'SUPERADMIN') {
+  if (error || !data || data.rol !== 'SUPERADMIN') {
     msg.textContent = "Accés restringit."
     return false
   }
@@ -106,7 +123,7 @@ async function comprovarSuperAdmin() {
 
 async function carregarUsuaris() {
   const { data, error } = await supabaseClient
-    .from('jugadors')
+    .from('users')
     .select('*')
     .order('nom')
 
@@ -118,30 +135,34 @@ async function carregarUsuaris() {
   document.querySelectorAll('.list').forEach(l => l.innerHTML = '')
 
   data.forEach(user => {
-    const card = document.createElement('div')
-    card.className = 'user-card'
-    card.textContent = user.nom
-    card.draggable = true
-    card.dataset.id = user.id
-    card.dataset.perfil = user.perfil
+  const card = document.createElement('div')
+  card.className = 'user-card'
+  card.textContent = user.nom + " " + user.cognom  // ✅ Nom + Cognom
+  card.draggable = true
+  card.dataset.id = user.id
+  card.dataset.perfil = user.rol
 
-    card.addEventListener('dragstart', (e) => {
-      e.dataTransfer.setData("id", user.id)
-      e.dataTransfer.setData("perfil", user.perfil)
-    })
-
-    const column = document.querySelector(
-      `.column[data-perfil="${user.perfil}"] .list`
-    )
-
-    column.appendChild(card)
+  card.addEventListener('dragstart', (e) => {
+    e.dataTransfer.setData("id", user.id)
+    e.dataTransfer.setData("perfil", user.rol)
   })
+
+  // Si és ADMIN, afegim click per assignar equips
+  if (user.rol === "ADMIN") {
+    card.style.cursor = "pointer"
+    card.addEventListener('click', () => obrirAssignacioEquips(user.id))
+  }
+
+  const column = document.querySelector(`.column[data-perfil="${user.rol}"] .list`)
+  column.appendChild(card)
+})
+
 }
 
 async function actualitzarPerfil(userId, nouPerfil) {
   const { error } = await supabaseClient
-    .from('jugadors')
-    .update({ perfil: nouPerfil })
+    .from('users')
+    .update({ rol: nouPerfil })
     .eq('id', userId)
 
   if (error) {
@@ -189,6 +210,62 @@ async function init() {
     await carregarUsuaris()
     activarDrop()
   }
+}
+
+async function obrirAssignacioEquips(userId) {
+  const equipModal = document.getElementById('equipModal')
+  const equipList = document.getElementById('equipList')
+  equipList.innerHTML = ""
+
+  // 1️⃣ Agafar tots els equips
+  const { data: equips } = await supabaseClient
+    .from('teams')
+    .select('*')
+    .order('nom')
+
+  // 2️⃣ Agafar equips actuals de l'ADMIN
+  const { data: userEquips } = await supabaseClient
+    .from('users_teams')
+    .select('team_id')
+    .eq('user_id', userId)
+
+  const userEquipIds = userEquips.map(ue => ue.team_id)
+
+  // 3️⃣ Mostrar checkboxes
+  equips.forEach(e => {
+    const div = document.createElement('div')
+    const checkbox = document.createElement('input')
+    checkbox.type = 'checkbox'
+    checkbox.checked = userEquipIds.includes(e.id)
+    checkbox.dataset.eid = e.id
+    checkbox.addEventListener('change', async () => {
+      if (checkbox.checked) {
+        // Assignar equip
+        await supabaseClient.from('users_teams').insert({
+          user_id: userId,
+          team_id: e.id
+        })
+      } else {
+        // Treure equip
+        await supabaseClient.from('users_teams')
+          .delete()
+          .eq('user_id', userId)
+          .eq('team_id', e.id)
+      }
+    })
+    div.appendChild(checkbox)
+    const label = document.createElement('span')
+    label.textContent = " " + e.nom
+    div.appendChild(label)
+    equipList.appendChild(div)
+  })
+
+  equipModal.style.display = "block"
+}
+
+// Botó tancar modal
+document.getElementById('closeEquipModal').onclick = () => {
+  document.getElementById('equipModal').style.display = "none"
 }
 
 init()

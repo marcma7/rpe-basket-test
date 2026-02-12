@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>RPE App</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
 <style>
 body {
   font-family: sans-serif;
@@ -17,54 +18,68 @@ body {
   margin-bottom: 30px;
 }
 
-/* Div amb botons SUPERADMIN i ADMIN */
 #role-options {
-  display: none;           /* inicialment ocult */
-  flex-direction: column;   /* columna vertical */
-  align-items: center;      /* centrar horitzontal */
-  gap: 15px;                /* espai entre botons */
+  display: none;              /* ocult inicialment */
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 15px;
   margin-top: 20px;
-  display: flex;            /* activar flex */
 }
 
 #role-options button {
-  font-size: 1.2rem;
-  padding: 10px 20px;
-  width: 220px;             /* amplada uniforme */
+  font-size: 1.1rem;
+  padding: 12px 18px;
+  width: 200px;
+  cursor: pointer;
 }
 </style>
 </head>
+
 <body>
 
 <h1>RPE</h1>
 <p id="msg">Carregant...</p>
 
-<div id="superadmin-options" style="display:none;">
+<div id="role-options">
   <button onclick="window.location.href='rpe.html'">Entrar a RPE</button>
-  <button onclick="window.location.href='admin.html'">Control equip</button>
-  <button onclick="window.location.href='superadmin.html'">Panell SUPERADMIN</button>
+  <button onclick="window.location.href='sessio.html'">Afegeix sessió</button>
+  <button onclick="window.location.href='gestEquips.html'">Gestiona equips</button>
+  <button onclick="window.location.href='analitza.html'">Analitza dades</button>
+  <button id="btnSuperadmin" onclick="window.location.href='superadmin.html'">
+    Gestiona permisos
+  </button>
+  <button id="btnLogout" style="background:#f44336; color:white;">Tancar sessió</button>
 </div>
 
 <script>
 const SUPABASE_URL = 'https://yixicmvonuiqdgcaiogb.supabase.co'
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpeGljbXZvbnVpcWRnY2Fpb2diIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAwMTU5MDksImV4cCI6MjA4NTU5MTkwOX0.NYiQN75-BqfiVkNRkwRsU6PE0fFleuPG6o5BaklhWgs'
-  
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
 
 const jugadorId = localStorage.getItem('jugadorId')
 const msg = document.getElementById('msg')
+const roleOptions = document.getElementById('role-options')
+const btnSuperadmin = document.getElementById('btnSuperadmin')
+const btnLogout = document.getElementById('btnLogout')
+
+// ----------------------
+// Funció de logout
+// ----------------------
+btnLogout.onclick = () => {
+  localStorage.removeItem('jugadorId')
+  window.location.href = 'rpe.html' // Torna al login
+}
 
 async function init() {
 
   if (!jugadorId) {
-    // No logat → anar a RPE (on hi ha login)
     window.location.href = "rpe.html"
     return
   }
 
   const { data, error } = await supabaseClient
-    .from('jugadors')
-    .select('perfil')
+    .from('users')
+    .select('rol')
     .eq('id', jugadorId)
     .single()
 
@@ -74,12 +89,28 @@ async function init() {
     return
   }
 
-  if (data.perfil === 'SUPERADMIN') {
-    msg.textContent = "Ets SUPERADMIN"
-    document.getElementById('superadmin-options').style.display = "block"
-  } else {
-    // USER o ADMIN → directament a RPE
+  const rol = data.rol
+
+  // 🟢 USER
+  if (rol === 'USER') {
     window.location.href = "rpe.html"
+    return
+  }
+
+  // 🟡 ADMIN
+  if (rol === 'ADMIN') {
+    msg.textContent = "Benvingut ADMIN"
+    roleOptions.style.display = "flex"
+    btnSuperadmin.style.display = "none"
+    return
+  }
+
+  // 🔴 SUPERADMIN
+  if (rol === 'SUPERADMIN') {
+    msg.textContent = "Benvingut SUPERADMIN"
+    roleOptions.style.display = "flex"
+    btnSuperadmin.style.display = "inline-block"
+    return
   }
 }
 

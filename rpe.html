@@ -64,7 +64,7 @@
   if (jugadorId) {
     const carregarJugador = async () => {
       const { data, error } = await supabaseClient
-        .from('jugadors')
+        .from('users')
         .select('nom')
         .eq('id', jugadorId)
         .single()
@@ -101,12 +101,11 @@
       b.textContent = i
       b.onclick = async () => {
         msg.textContent = 'Enviant RPE ' + i + '...'
-        const { error } = await supabaseClient
-          .from('rpe_registres')
-          .insert({
-            jugador_id: jugadorId,
-            valor: i
-          })
+        const { error } = await supabaseClient.from('rpe_registres')
+  					.upsert({jugador_id: jugadorId,
+    						valor: i,
+						data: avui
+  					})
         if (error) {
           console.error(error)
           msg.textContent = 'Error 😕'
@@ -123,41 +122,60 @@
   // Botó per entrar nom
   // ====================
   btnNom.onclick = async () => {
-    let nom = nomInput.value.trim().toLowerCase()
-    if (!nom) return alert("Escriu un nom!")
+  let codi = nomInput.value.trim().toLowerCase()
+  if (!codi) return alert("Escriu el teu codi!")
 
-    // Comprovar si ja existeix
-    let { data: existing, error } = await supabaseClient
-      .from('jugadors')
-      .select('*')
-      .eq('nom', nom)
-      .limit(1)
+  // -------------------
+  // Buscar l'usuari pel codi
+  // -------------------
+  const { data: user, error } = await supabaseClient
+    .from('users')
+    .select('*')
+    .eq('codi', codi)
+    .limit(1)
+    .single() // retornem només un registre
 
-    if (error) { console.error(error); return alert("Error de BD") }
-
-    if (existing.length > 0) {
-      jugadorId = existing[0].id
-    } else {
-      // Crear jugador nou
-      let { data: newPlayer, error: errInsert } = await supabaseClient
-        .from('jugadors')
-        .insert({ nom })
-        .select()
-        .limit(1)
-
-      if (errInsert) { console.error(errInsert); return alert("Error al crear jugador") }
-
-      jugadorId = newPlayer[0].id
-    }
-
-    // Guardar a localStorage
-    localStorage.setItem('jugadorId', jugadorId)
-
-    // Amagar login i mostrar botons
-    loginDiv.style.display = 'none'
-    botonsDiv.style.display = 'block'
-    mostrarBotons()
+  if (error) {
+    console.error(error)
+    return alert("Error a la base de dades")
   }
+
+  if (!user) {
+    return alert("Codi no vàlid. Contacta amb l'administrador.")
+  }
+
+  jugadorId = user.id
+
+  // -------------------
+  // Si no té email, demanar-lo
+  // -------------------
+  if (!user.email) {
+    let email = prompt("Si us plau, introdueix el teu email:")
+    if (!email) return alert("Has d’introduir l’email!")
+    const { error: errEmail } = await supabaseClient
+      .from('users')
+      .update({ email })
+      .eq('id', jugadorId)
+    if (errEmail) return alert("Error guardant email")
+  }
+
+  // -------------------
+  // Guardar a localStorage
+  // -------------------
+  localStorage.setItem('jugadorId', jugadorId)
+
+  // -------------------
+  // Amagar login i mostrar botons
+  // -------------------
+  loginDiv.style.display = 'none'
+  botonsDiv.style.display = 'block'
+
+  // Mostrar pregunta amb nom si existeix
+  actualitzarPregunta(user.nom || codi)
+
+  mostrarBotons()
+}
+
 
 </script>
 
