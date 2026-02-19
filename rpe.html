@@ -20,6 +20,64 @@
       width: 80px;
       height: 80px;
     }
+
+#calendari-setmana {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .dia-setmana {
+      text-align: center;
+      font-weight: bold;
+      margin-bottom: 4px;
+    }
+
+    .dia-box {
+      width: 40px;
+      height: 40px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #eee;
+      font-weight: bold;
+    }
+
+    .dia-box.pendent {
+      background-color: #ff4d4d;
+      color: white;
+    }
+
+    #calendari {
+      overflow-x:auto; 
+      margin-top:20px;
+    }
+
+    #cal-table {
+      border-collapse: collapse; 
+      width: 100%;
+    }
+
+    #cal-table th, #cal-table td {
+      padding: 10px;
+      border: 1px solid #ccc;
+      text-align: center;
+    }
+
+    .clicable {
+      background-color: #ff4d4d;
+      color: white;
+      cursor: pointer;
+    }
+
+    .no-clicable {
+      background-color: #eee;
+      color: #888;
+      cursor: not-allowed;
+    }
+
+
   </style>
 </head>
 <body>
@@ -31,6 +89,19 @@
   <input type="text" id="nomJugador" placeholder="Introdueix el teu nom" />
   <button id="btnNom">Comença</button>
 </div>
+
+
+
+<div id="calendari" style="overflow-x:auto; margin-top:20px;">
+  <table id="cal-table" border="1" style="border-collapse: collapse; width: 100%;">
+    <thead>
+      <tr id="cal-header"></tr>
+    </thead>
+    <tbody id="cal-body"></tbody>
+  </table>
+</div>
+
+
 
 <div id="botons" style="display:none;"></div>
 <p id="msg"></p>
@@ -74,6 +145,7 @@
         loginDiv.style.display = 'none'
         botonsDiv.style.display = 'block'
         mostrarBotons()
+        renderCalendariSetmana()
       } else {
         // si hi ha algun problema, tornem al login
     	localStorage.removeItem('jugadorId')
@@ -83,6 +155,7 @@
     carregarJugador()
   }
 
+  const calendariDiv = document.getElementById('calendari')
 
   const pregunta = document.getElementById('pregunta')
 
@@ -100,20 +173,48 @@
       const b = document.createElement('button')
       b.textContent = i
       b.onclick = async () => {
-        msg.textContent = 'Enviant RPE ' + i + '...'
-        const { error } = await supabaseClient.from('rpe_registres')
-  					.upsert({jugador_id: jugadorId,
-    						valor: i,
-						data: avui
-  					})
+        msg.textContent = 'Enviant RPE ' + i + '...';
+        const avui = new Date().toISOString();  // data i hora actual
+        const { error } = await supabaseClient
+          .from('rpe_registres')
+          .upsert({jugador_id: jugadorId, valor: i, data: avui, data_sessio: dataSeleccionada});
+
         if (error) {
-          console.error(error)
-          msg.textContent = 'Error 😕'
+          console.error(error);
+          msg.textContent = 'Error 😕';
         } else {
-          msg.textContent = 'Gràcies!'
-          setTimeout(() => msg.textContent = '', 2000)
+          msg.textContent = 'Gràcies!';
+          // Espera 1 segon abans de fer l'acció segons rol
+          setTimeout(async () => {
+            const pendents = await hiHaPendents();
+            if (pendents) {
+              if (rolUsuari === 'USER') {
+                const resposta = confirm("Tens entrenaments sense RPE.\n\nVols tancar l'app?\nPrem CANCEL·LAR per registrar l'RPE que falta.");
+
+                if (resposta) {
+                  window.close(); // només funciona si s'ha obert amb JS
+                }
+              } else if (rolUsuari === 'ADMIN' || rolUsuari === 'SUPERADMIN') {
+                const resposta = confirm("Hi ha entrenaments sense RPE.\n\nVols tornar a la pantalla inicial?\nPrem CANCEL·LAR per registrar l'RPE.");
+
+                if (resposta) {
+                  window.location.href = 'index.html';
+                }
+              }
+            } else {
+              // NO HI HA PENDENTS
+              if (rolUsuari === 'USER') {
+                msg.textContent = "Gràcies! L'aplicació es tancarà.";
+                setTimeout(() => {window.close();}, 1500);
+              } else {
+                msg.textContent = "Gràcies! Tornant a la pantalla principal.";
+                setTimeout(() => {window.location.href = 'index.html';}, 1500);
+              }
+            }
+          } 1000);
         }
-      }
+      };
+
       botonsDiv.appendChild(b)
     }
   }
@@ -156,6 +257,7 @@
       .from('users')
       .update({ email })
       .eq('id', jugadorId)
+
     if (errEmail) return alert("Error guardant email")
   }
 
@@ -174,10 +276,213 @@
   actualitzarPregunta(user.nom || codi)
 
   mostrarBotons()
+  renderCalendariSetmana()
+
 }
 
 
-</script>
+async function renderCalendariSetmana() {
+  const avui = new Date();
+  const year = 2025
+  const month = 2
 
+  const primerDia = new Date(year, month, 1);
+  const ultimDia = new Date(year, month + 1, 0);
+  const numDies = ultimDia.getDate();
+
+  const calHeader = document.getElementById('cal-header');
+  const calBody = document.getElementById('cal-body');
+
+  const diesSetmana = diesSetmanaRotats();
+
+  calHeader.innerHTML = '';
+  diesSetmana.forEach(d => {
+    const th = document.createElement('th');
+    th.textContent = d;
+    calHeader.appendChild(th);
+  });
+
+  // Cos del calendari: últims 7 dies fins avui
+  calBody.innerHTML = '';
+  let tr = document.createElement('tr');
+
+  // Últims 7 dies: del més antic al més recent (avui inclòs)
+  const dies = [];
+  for (let i = 6; i >= 0; i--) {
+    const dia = new Date(avui);
+    dia.setDate(avui.getDate() - i); // restem dies correctament
+    dies.push(dia);
+  }
+
+  // Inicialitzar tots els botons RPE com desactivats
+  Array.from(botonsDiv.children).forEach(boto => {
+    boto.style.cursor = 'not-allowed';
+    boto.style.pointerEvents = 'none';
+    boto.style.opacity = '0.6';
+    boto.style.outline = 'none';
+  });
+
+  const { data: sessions, error } = await supabaseClient
+    .from('registres_entrenaments')
+    .select('data_sessio')  // només la data, sense la relació
+    .in('user_team_id',       // columna FK
+         await supabaseClient
+          .from('users_teams')  // la taula dels equips/relacions
+          .select('id')
+          .eq('user_id', jugadorId)
+          .then(r => r.data.map(row => row.id))
+    )
+    .gte('data_sessio', dies[0].toISOString().split('T')[0])
+    .lte('data_sessio', dies[6].toISOString().split('T')[0]);
+
+ const diesAmbSessio = new Set((sessions || []).map(d => {
+    const dt = new Date(d.data_sessio)
+    const any = dt.getFullYear()
+    const mes = String(dt.getMonth() + 1).padStart(2, '0')
+    const dia = String(dt.getDate()).padStart(2, '0')
+    return `${any}-${mes}-${dia}`
+  }))
+
+  // ====================
+  // Afegir RPE ja registrat
+  // ====================
+  // Agafem RPE per aquest jugador i la setmana
+  const { data: rpes } = await supabaseClient
+    .from('rpe_registres')
+    .select('data_sessio, valor')
+    .eq('jugador_id', jugadorId)
+    .in('data_sessio',
+        dies.map(d => {
+          const any = d.getFullYear()
+          const mes = String(d.getMonth() + 1).padStart(2, '0')
+          const dia = String(d.getDate()).padStart(2, '0')
+          return `${any}-${mes}-${dia}`
+        })
+    )
+
+  // Map per accedir ràpidament: dateISO → valor
+  const rpeMap = new Map();
+  rpes?.forEach(r => {
+    const dt = new Date(r.data_sessio)
+    const any = dt.getFullYear()
+    const mes = String(dt.getMonth() + 1).padStart(2, '0')
+    const dia = String(dt.getDate()).padStart(2, '0')
+    const dateISO = `${any}-${mes}-${dia}`
+    rpeMap.set(dateISO, r.valor)
+  })
+
+  // Crear cel·les per cada dia
+  dies.forEach(dia => {
+    const td = document.createElement('td')
+    const diaStr = String(dia.getDate()).padStart(2,'0')
+    const mesStr = String(dia.getMonth()+1).padStart(2,'0')
+    const dateISO = `${dia.getFullYear()}-${mesStr}-${diaStr}`
+    td.textContent = `${diaStr}/${mesStr}`
+
+    // --------------------
+    // Si ja hi ha RPE → verd i no clicable. Si no, vermell i clicable
+    // --------------------
+    if (rpeMap.has(dateISO)) {
+      td.style.backgroundColor = '#4caf50' // verd
+      td.style.color = 'white'
+      td.style.cursor = 'not-allowed'
+    } else if (diesAmbSessio.has(dateISO)) {
+      // Dia amb sessió → vermell, clicable
+      td.classList.add('clicable');
+      td.addEventListener('click', () => {
+        dataSeleccionada = dateISO;
+        // Marcar dia seleccionat
+        document.querySelectorAll('.seleccionat').forEach(d => d.classList.remove('seleccionat'));
+        td.classList.add('seleccionat');
+        // Activar tots els botons RPE
+        Array.from(botonsDiv.children).forEach(boto => {
+          boto.style.cursor = 'pointer';
+          boto.style.pointerEvents = 'auto';
+          boto.style.opacity = '1';
+          boto.style.outline = 'none';
+        });
+      });
+    } else {
+      td.classList.add('no-clicable')
+    }
+    tr.appendChild(td)
+  })
+
+  // Afegir la fila al tbody
+  calBody.appendChild(tr);
+}
+
+
+// Cridar després de carregar jugadors o al iniciar
+function diesSetmanaRotats() {
+  // Header: dies de la setmana
+  const diesSetmanaNom = ['DL','DM','DC','DJ','DV','DS','DG']
+
+  const avui = new Date()
+  const avuiIndex = avui.getDay() === 0 ? 6 : avui.getDay() - 1 // Dilluns=0
+
+  const rotat = []
+
+  // 7 dies: demà fins avui
+  for (let i = 1; i <= 7; i++) {
+    const index = (avuiIndex + i) % 7
+    rotat.push(diesSetmanaNom[index])
+  }
+
+  return rotat
+}
+
+async function hiHaPendents() {
+  const avui = new Date();
+
+  const dies = [];
+  for (let i = 6; i >= 0; i--) {
+    const dia = new Date(avui);
+    dia.setDate(avui.getDate() - i);
+    dies.push(dia);
+  }
+
+  const diesISO = dies.map(d => {
+    const any = d.getFullYear()
+    const mes = String(d.getMonth() + 1).padStart(2, '0')
+    const dia = String(d.getDate()).padStart(2, '0')
+    return `${any}-${mes}-${dia}`
+  });
+
+  // sessions
+  const { data: sessions } = await supabaseClient
+    .from('registres_entrenaments')
+    .select('data_sessio')
+    .in('user_team_id',
+         await supabaseClient
+          .from('users_teams')
+          .select('id')
+          .eq('user_id', jugadorId)
+          .then(r => r.data.map(row => row.id))
+    )
+    .in('data_sessio', diesISO);
+
+  const diesAmbSessio = new Set((sessions || []).map(s => s.data_sessio));
+
+  // rpes
+  const { data: rpes } = await supabaseClient
+    .from('rpe_registres')
+    .select('data_sessio')
+    .eq('jugador_id', jugadorId)
+    .in('data_sessio', diesISO);
+
+  const diesAmbRPE = new Set((rpes || []).map(r => r.data_sessio));
+
+  // Comprovem si algun dia amb sessió NO té RPE
+  for (let dia of diesAmbSessio) {
+    if (!diesAmbRPE.has(dia)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+</script>
 </body>
 </html>

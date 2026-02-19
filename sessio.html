@@ -53,9 +53,26 @@ button { margin-top: 10px; padding: 5px 10px; }
   <div id="jugadors-list"></div>
   <button id="guardar-tots">Guardar a la BBDD</button>
 </div>
-
-
 </div>
+<h3>Calendari de sessions</h3>
+<div style="display:flex; justify-content:space-between; align-items:center;">
+  <button id="prev-mes">◀</button>
+  <h3 id="titol-mes"></h3>
+  <button id="next-mes">▶</button>
+</div>
+
+<div id="calendari" style="overflow-x:auto; margin-top:20px;">
+  <table id="cal-table" border="1" style="border-collapse: collapse; width: 100%;">
+    <thead>
+      <tr id="cal-header"></tr>
+    </thead>
+    <tbody id="cal-body"></tbody>
+  </table>
+</div>
+
+
+
+
 
 <p id="msg"></p>
 
@@ -80,6 +97,12 @@ const msg = document.getElementById('msg')
 let equipActual = null
 let dataActual = null
 let jugadors = []
+let mesActual = new Date().getMonth()
+let anyActual = new Date().getFullYear()
+let dataSeleccionada = null
+let dataArrossegada = null
+
+
 
 async function init() {
   // 1️⃣ Saber perfil
@@ -92,7 +115,7 @@ async function init() {
     .select('*')
     .order('nom')
   equips = data
-}else if (jugador.rol === 'ADMIN') {
+} else if (jugador.rol === 'ADMIN') {
   const { data, error } = await supabaseClient
     .from('users_teams')
     .select('team_id, teams(nom)')
@@ -169,27 +192,33 @@ async function carregarJugadors(equipId) {
     .from('registres_entrenaments')
     .select('*')
     .in('user_team_id', jugadors.map(j => j.user_team_id))
-    .eq('data', avui)
+    .eq('data_sessio', avui)
 
   if (actError) {
     console.error(actError)
     return
   }
 
-  renderJugadors(jugadors, actData)
+  renderJugadors([])   // primer pinta jugadors buits
+await carregarRegistresDelDia(avui)   // després omple si hi ha dades
+renderCalendariSetmanal(equipId)
+
+  renderCalendariSetmanal(equipId)
+
 }
 
 
 function renderJugadors(actData=[]) {
   jugadorsList.innerHTML = ''
   jugadors.forEach(j => {
-    const aj = actData.find(a => a.jugador_id===j.id) || {}
+    const aj = actData.find(a => a.user_team_id === j.user_team_id) || {}
+
     const div = document.createElement('div')
     div.className='jugador'
       div.innerHTML = `
   <span>${j.nom} ${j.cognom}</span>
-  <input type="number" placeholder="PF" data-jtid="${j.user_team_id}" class="temps-pf" value="${aj.temps_pf||''}">
-  <input type="number" placeholder="Pista" data-jtid="${j.user_team_id}" class="temps-pista" value="${aj.temps_pista||''}">
+  <input type="number" placeholder="PF" data-jtid="${j.user_team_id}" class="temps-pf" value="${aj.temps_pf??0}">
+  <input type="number" placeholder="Pista" data-jtid="${j.user_team_id}" class="temps-pista" value="${aj.temps_pista??0}">
   <input type="checkbox" data-jtid="${j.user_team_id}" class="partit-jug" ${aj.partit?'checked':''}>
     `
     jugadorsList.appendChild(div)
@@ -213,39 +242,237 @@ aplicarBtn.addEventListener('click', () => {
 // ----------------
 // BOTÓ GUARDAR TOTS
 // ----------------
-const guardarTotsBtn = document.getElementById('guardar-tots')
-guardarTotsBtn.addEventListener('click', async () => {
-  const avui = dataInput.value
+const guardarTotsBtn = document.getElementById('guardar-tots') 
+guardarTotsBtn.addEventListener('click', async () => { 
+	const novaData = dataInput.value
 
-  for (const j of jugadors) {
-    const pf = document.querySelector(`.temps-pf[data-jtid="${j.user_team_id}"]`).value || 0
-    const pista = document.querySelector(`.temps-pista[data-jtid="${j.user_team_id}"]`).value || 0
-    const partit = document.querySelector(`.partit-jug[data-jtid="${j.user_team_id}"]`).checked
+	for (const j of jugadors) { 
+const pf = document.querySelector(`.temps-pf[data-jtid="${j.user_team_id}"]`).value || 0
+const pista = document.querySelector(`.temps-pista[data-jtid="${j.user_team_id}"]`).value || 0
+const partit = document.querySelector(`.partit-jug[data-jtid="${j.user_team_id}"]`).checked
 
-    // Comprovar si ja existeix
-    const { data: exist } = await supabaseClient
-      .from('registres_entrenaments')
-      .select('*')
-      .eq('user_team_id', j.user_team_id)
-      .eq('data', avui)
-      .limit(1)
-      .single()
+		// Assegurar que dataSeleccionada cobreix tot el dia
+const dia = new Date(dataSeleccionada);
+const start = new Date(dia);
+start.setHours(0, 0, 0, 0); // inici del dia
+const end = new Date(dia);
+end.setHours(23, 59, 59, 999); // final del dia
 
-    if (exist) {
-      await supabaseClient
-        .from('registres_entrenaments')
-        .update({ temps_pf: pf, temps_pista: pista, partit: partit })
-        .eq('id', exist.id)
-    } else {
-      await supabaseClient
-        .from('registres_entrenaments')
-        .insert({ user_team_id: j.user_team_id, data: avui, temps_pf: pf, temps_pista: pista, partit: partit })
+const { data: exist, error } = await supabaseClient
+  .from('registres_entrenaments')
+  .select('*')
+  .eq('user_team_id', j.user_team_id)
+  .gte('data_sessio', start.toISOString())
+  .lte('data_sessio', end.toISOString())
+  .limit(1)
+  .single();
+ 
+if (exist) { 
+await supabaseClient 
+.from('registres_entrenaments') 
+.update({ data_sessio: novaData, temps_pf: pf, temps_pista: pista, partit: partit }) 
+.eq('id', exist.id) 
+} else { 
+await supabaseClient 
+.from('registres_entrenaments') 
+.insert({ user_team_id: j.user_team_id, data_sessio: novaData, temps_pf: pf, temps_pista: pista, partit: partit }) 
+} 
+} 
+msg.textContent = "Dades guardades!" 
+setTimeout(()=>msg.textContent='',2000) 
+renderCalendariSetmanal(equipActual)
+})
+
+
+async function renderCalendariSetmanal(equipId) {
+
+	if (!equipId) return;
+
+  const avui = new Date();
+  const year = anyActual
+	const month = mesActual
+
+  const primerDia = new Date(year, month, 1);
+  const ultimDia = new Date(year, month + 1, 0);
+  const numDies = ultimDia.getDate();
+const mesos = [
+  'Gener','Febrer','Març','Abril','Maig','Juny',
+  'Juliol','Agost','Setembre','Octubre','Novembre','Desembre'
+]
+
+document.getElementById('titol-mes').textContent =
+  mesos[month] + ' ' + year
+
+
+  // Obtenir registres del mes per aquell equip
+  const { data: registres } = await supabaseClient
+    .from('registres_entrenaments')
+    .select('data_sessio,user_team_id')
+    .in('user_team_id', jugadors.map(j => j.user_team_id))
+    .gte('data_sessio', `${year}-${String(month+1).padStart(2,'0')}-01`)
+    .lte('data_sessio', `${year}-${String(month+1).padStart(2,'0')}-${numDies}`);
+
+  // Map de dies amb sessions
+  const diesAmbSessio = new Set(registres.map(r => r.data_sessio));
+
+  const calHeader = document.getElementById('cal-header');
+  const calBody = document.getElementById('cal-body');
+
+  // Header: dies de la setmana
+  const diesSetmana = ['DL', 'DM', 'DC', 'DJ', 'DV', 'DS', 'DG'];
+  calHeader.innerHTML = '';
+  diesSetmana.forEach(d => {
+    const th = document.createElement('th');
+    th.textContent = d;
+    calHeader.appendChild(th);
+  });
+
+  // Cos del calendari
+  calBody.innerHTML = '';
+  let tr = document.createElement('tr');
+  let diaSetmana = primerDia.getDay() === 0 ? 6 : primerDia.getDay() - 1; // Ajustar Dilluns=0
+
+  // Cel·les buides abans del primer dia
+  for (let i = 0; i < diaSetmana; i++) {
+    const td = document.createElement('td');
+    td.textContent = '';
+    tr.appendChild(td);
+  }
+
+  for (let dia = 1; dia <= numDies; dia++) {
+    const td = document.createElement('td');
+    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
+
+    td.textContent = dia;
+    td.style.cursor = 'pointer';
+    td.style.padding = '10px';
+    td.style.textAlign = 'center';
+    td.style.border = '1px solid #ccc';
+
+    if (diesAmbSessio.has(dateStr)) {
+  td.style.backgroundColor = '#a0e7a0'
+  td.draggable = true
+}
+
+
+    td.addEventListener('click', async () => {
+  dataSeleccionada = dateStr
+  dataInput.value = dateStr
+  await carregarRegistresDelDia(dateStr)
+})
+
+td.addEventListener('dragstart', (e) => {
+  dataArrossegada = dateStr
+})
+
+td.addEventListener('dragover', (e) => {
+  e.preventDefault()
+})
+
+td.addEventListener('drop', async () => {
+  if (!dataArrossegada) return
+  if (dataArrossegada === dateStr) return
+
+  if (!confirm(`Moure la sessió del ${dataArrossegada} al ${dateStr}?`)) return
+
+  await moureSessio(dataArrossegada, dateStr)
+
+  dataArrossegada = null
+  renderCalendariSetmanal(equipActual)
+})
+
+
+
+
+    tr.appendChild(td);
+    diaSetmana++;
+    if (diaSetmana === 7) {
+      calBody.appendChild(tr);
+      tr = document.createElement('tr');
+      diaSetmana = 0;
     }
   }
 
-  msg.textContent = "Dades guardades!"
-  setTimeout(()=>msg.textContent='',2000)
+  // Cel·les buides després de l’últim dia
+  if (diaSetmana !== 0) {
+    for (let i = diaSetmana; i < 7; i++) {
+      const td = document.createElement('td');
+      td.textContent = '';
+      tr.appendChild(td);
+    }
+    calBody.appendChild(tr);
+  }
+}
+
+async function carregarRegistresDelDia(dataSeleccionada) {
+  if (!jugadors.length) return
+
+  const { data: registres, error } = await supabaseClient
+    .from('registres_entrenaments')
+    .select('*')
+    .in('user_team_id', jugadors.map(j => j.user_team_id))
+    .eq('data_sessio', dataSeleccionada)
+
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  jugadors.forEach(j => {
+    const reg = registres.find(r => r.user_team_id === j.user_team_id)
+
+    const pfInput = document.querySelector(`.temps-pf[data-jtid="${j.user_team_id}"]`)
+    const pistaInput = document.querySelector(`.temps-pista[data-jtid="${j.user_team_id}"]`)
+    const partitInput = document.querySelector(`.partit-jug[data-jtid="${j.user_team_id}"]`)
+
+    if (reg) {
+      pfInput.value = reg.temps_pf ?? 0
+      pistaInput.value = reg.temps_pista ?? 0
+      partitInput.checked = reg.partit ?? false
+    } else {
+      pfInput.value = 0
+      pistaInput.value = 0
+      partitInput.checked = false
+    }
+  })
+}
+
+document.getElementById('prev-mes').addEventListener('click', () => {
+  mesActual--
+  if (mesActual < 0) {
+    mesActual = 11
+    anyActual--
+  }
+  renderCalendariSetmanal(equipActual)
 })
+
+document.getElementById('next-mes').addEventListener('click', () => {
+  mesActual++
+  if (mesActual > 11) {
+    mesActual = 0
+    anyActual++
+  }
+  renderCalendariSetmanal(equipActual)
+})
+
+
+async function moureSessio(dataOrigen, dataDesti) {
+
+  const { error } = await supabaseClient
+    .from('registres_entrenaments')
+    .update({ data_sessio: dataDesti })
+    .in('user_team_id', jugadors.map(j => j.user_team_id))
+    .eq('data_sessio', dataOrigen)
+
+  if (error) {
+    console.error(error)
+    alert("Error movent sessió")
+    return
+  }
+
+  alert("Sessió moguda correctament")
+}
+
 
 
 init()
